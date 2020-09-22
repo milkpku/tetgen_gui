@@ -31,6 +31,7 @@ iMat F_tet;
 iVec TX_tet;
 
 // visualize representation
+iMat T_vis;
 iMat F_vis;
 
 void show_origin()
@@ -42,7 +43,9 @@ void show_origin()
 void show_tet()
 {
   viewer.data().clear();
-  igl::boundary_facets(T_tet, F_vis);
+  // update T_vis
+  T_vis = T_tet;
+  igl::boundary_facets(T_vis, F_vis);
   viewer.data().set_mesh(V_tet, F_vis);
 }
 
@@ -106,7 +109,7 @@ bool load_tetgenio(const std::string filename)
   return tetgenio_info;
 }
 
-int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T, iVec& TX, iMat& F)
+int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T, iVec& TR)
 {
   tetgenio out;
   using namespace std;
@@ -128,26 +131,62 @@ int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T
     return 2;
   }
 
-  std::vector<std::vector<double>> TV;
-  std::vector<std::vector<int>> TT;
-  std::vector<std::vector<int>> TF;
-  bool success = igl::copyleft::tetgen::tetgenio_to_tetmesh(out, TV, TT, TF);
-  if (!success) return -1;
+  // readout vertices
+  if(out.pointlist == NULL)
+  {
+    printf("^tetgenio_to_tetmesh Error: point list is NULL\n");
+    return false;
+  }
+  V.resize(out.numberofpoints, 3);
+  for (int i = 0; i < out.numberofpoints; i++)
+  {
+    V(i, 0) = out.pointlist[i*3+0];
+    V(i, 1) = out.pointlist[i*3+1];
+    V(i, 2) = out.pointlist[i*3+2];
+  }
 
-  V.resize(TV.size(), 3);
-  for (int i = 0; i < TV.size(); i++)
-    V.row(i) << TV[i][0], TV[i][1], TV[i][2];
+  // readout tetrahedras
+  if(out.tetrahedronlist == NULL)
+  {
+    printf("^tetgenio_to_tetmesh Error: tet list is NULL\n");
+    return false;
+  }
+  assert(out.numberofcorners == 4);
+  T.resize(out.numberoftetrahedra, 4);
+  for (int i = 0; i < out.numberoftetrahedra; i++)
+  {
+    T(i, 0) = out.tetrahedronlist[i*4+0];
+    T(i, 1) = out.tetrahedronlist[i*4+1];
+    T(i, 2) = out.tetrahedronlist[i*4+2];
+    T(i, 3) = out.tetrahedronlist[i*4+3];
+  }
+  assert(T.maxCoeff() >= 0);
+  assert(T.minCoeff() >= 0);
+  assert(T.maxCoeff() < V.rows());
 
-  T.resize(TT.size(), 4);
-  for (int i = 0; i < TT.size(); i++)
-    T.row(i) << TT[i][0], TT[i][1], TT[i][2], TT[i][3];
-
-  TX = iVec::Ones(T.rows());  //TODO read out TX info from tetgenio
-
-  F.resize(TF.size(), 3);
-  for (int i = 0; i < TF.size(); i++)
-    F.row(i) << TF[i][0], TF[i][1], TF[i][2];
-
+  // readout tetrahedra attributes
+  if(out.tetrahedronattributelist == NULL)
+  {
+    printf("^tetgenio_to_tetmesh Error: tet attr list is NULL\n");
+    return false;
+  }
+  TR.resize(out.numberoftetrahedra, 1);
+  unordered_map<double, int> hashUniqueRegions;
+  hashUniqueRegions.clear();
+  int nR = 0;
+  for (int i = 0; i < out.numberoftetrahedra; i++)
+  {
+    double attr = out.tetrahedronattributelist[i]; 
+    if (hashUniqueRegions.find(attr) == hashUniqueRegions.end())
+    {
+      hashUniqueRegions[attr] = nR++;
+    }
+    TR(i, 0) = hashUniqueRegions[attr];
+  }
+  assert(hashUniqueRegions.size() == nR);
+  assert(TR.minCoeff() >= 0);
+  assert(TR.maxCoeff() < nR);
+  
   return 0;
 }
 
@@ -218,7 +257,7 @@ int main(int argc, char* argv[])
     if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // TODO file dialog
-      static std::string mesh_file = "bunny.off";
+      static std::string mesh_file = "cylinder.ply";
       ImGui::InputText("input file", mesh_file);
       if (ImGui::Button("Open", ImVec2(-1,0)))
       {
@@ -231,33 +270,28 @@ int main(int argc, char* argv[])
     if (ImGui::CollapsingHeader("Tetgen", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // tetrahedralizaiton argument 
-      static std::string para_str = "pq";
+      static std::string para_str = "pqAa1e-1";
       ImGui::InputText("parameters", para_str);
       // TODO help menu
       // tetrahedralize
       if (ImGui::Button("Tetrahedralize", ImVec2(-1,0)))
       {
         int info;
-        info = tetrahedralize_tetgenio(&tetio, para_str, V_tet, T_tet, TX_tet, F_tet);
+        info = tetrahedralize_tetgenio(&tetio, para_str, V_tet, T_tet, TX_tet);
         if (info != 0)
         {
           printf("Fail to tetrahedralize mesh with argv [-%s]\n", para_str.c_str());
           return;
         }
 
-        // switch facet to make it outward
-        {
-          Eigen::VectorXi l = F_tet.col(0);
-          F_tet.col(0) = F_tet.col(1);
-          F_tet.col(1) = l;
-        }
-        
         // switch tet to make it outward
         {
           Eigen::VectorXi l = T_tet.col(0);
           T_tet.col(0) = T_tet.col(1);
           T_tet.col(1) = l;
         }
+        
+        igl::boundary_facets(T_tet, F_tet);
 
         printf("Tetrahedralize finished.\n");
         show_tet();
@@ -285,6 +319,9 @@ int main(int argc, char* argv[])
 
     ImGui::End();
   };
+
+  tetgenbehavior b;
+  b.syntax();
 
   viewer.launch();
 
