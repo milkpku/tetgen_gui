@@ -17,6 +17,7 @@ igl::opengl::glfw::Viewer viewer;
 typedef Eigen::MatrixXd dMat;
 typedef Eigen::MatrixXi iMat;
 typedef Eigen::VectorXi iVec;
+typedef Eigen::Matrix<bool, Eigen::Dynamic, 1> bVec;
 
 // input visualization & representation
 dMat V_ori;
@@ -31,7 +32,9 @@ iMat F_tet;
 iVec TX_tet;
 
 // visualize representation
+bVec mask;
 iMat T_vis;
+iMat TX_vis;
 iMat F_vis;
 
 void show_origin()
@@ -43,8 +46,15 @@ void show_origin()
 void show_tet()
 {
   viewer.data().clear();
-  // update T_vis
-  T_vis = T_tet;
+
+  // update T_vis by mask
+  bVec mask_T(TX_tet.size());
+  for (int i = 0; i < TX_tet.size(); i++)
+    mask_T(i) = mask(TX_tet(i));
+  igl::slice_mask(T_tet, mask_T, 1, T_vis);
+  igl::slice_mask(TX_tet, mask_T, 1, TX_vis);
+
+  // show T_vis
   igl::boundary_facets(T_vis, F_vis);
   viewer.data().set_mesh(V_tet, F_vis);
 }
@@ -191,47 +201,53 @@ int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T
 }
 
 bool remove_unrefed = true;
-bool export_surf = false;
-bool export_tet = true;
+bool export_tet_info = true;
 bool export_file(const std::string filename)
 {
-  if (export_surf && !export_tet)
+  iMat T_exp;
+  dMat V_exp;
+  iMat TX_exp=TX_vis;
+	
+  if (remove_unrefed)
   {
     printf("Writing as OBJ format\n");
     if (remove_unrefed)
     {
-      dMat NV;
-      iMat NF, I;
-      igl::remove_unreferenced(V_tet, F_tet, NV, NF, I);
-      return igl::writeOBJ(filename, NV, NF);
+      iMat I, J;
+      igl::remove_unreferenced(V_tet, T_vis, V_exp, T_exp, I, J);
     }
-    else
-    {
-      return igl::writeOBJ(filename, V_tet, F_tet);
-    }
+  }
+  else
+  {
+    T_exp = T_vis;
+    V_exp = V_tet;
   }
 
   printf("Writing as VFTX format\n");
   auto out = fmt::output_file(filename);
-//if (!out.good())
-//{
-//  printf("fail to open file %s\n", filename.c_str());
-//  return false;
-//}
   
   out.print("# writing with .vftx format\n");
-  out.print("txn 1\n");     // tetrahedron information number, which is its cluster info
-  for (int i = 0; i < V_tet.rows(); i++)
-    out.print("v {:f} {:f} {:f}\n", V_tet(i, 0), V_tet(i, 1), V_tet(i, 2));
 
-  if (export_tet)
-    for (int i = 0; i < T_tet.rows(); i++)
-      out.print("t {:d} {:d} {:d} {:d} {:d}\n", T_tet(i, 0), T_tet(i, 1), T_tet(i, 2), T_tet(i, 3), TX_tet(i));
+  // tetrahedron information number, which is its cluster info
+  if (export_tet_info)
+    out.print("txn 1\n");     
 
-  if (export_surf)
-    for (int i = 0; i < F_tet.rows(); i++)
-      out.print("f {:d} {:d} {:d}\n", F_tet(i, 0), F_tet(i, 1), F_tet(i, 2));
+  for (int i = 0; i < V_exp.rows(); i++)
+    out.print("v {:f} {:f} {:f}\n", V_exp(i, 0), V_exp(i, 1), V_exp(i, 2));
 
+  if (export_tet_info)
+  {
+    for (int i = 0; i < T_exp.rows(); i++)
+      out.print("t {:d} {:d} {:d} {:d} {:d}\n", 
+          T_exp(i, 0), T_exp(i, 1), T_exp(i, 2), T_exp(i, 3), TX_exp(i));
+  }
+  else
+  {
+    for (int i = 0; i < T_exp.rows(); i++)
+      out.print("t {:d} {:d} {:d} {:d}\n", 
+          T_exp(i, 0), T_exp(i, 1), T_exp(i, 2), T_exp(i, 3));
+  }
+	
   out.close();
   return true;
 }
@@ -293,9 +309,25 @@ int main(int argc, char* argv[])
         
         igl::boundary_facets(T_tet, F_tet);
 
+        mask = bVec::Ones(TX_tet.maxCoeff()+1);
+
         printf("Tetrahedralize finished.\n");
         show_tet();
        }
+    }
+    
+    // Visualize
+    if (ImGui::CollapsingHeader("Show Region", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+      for (int i = 0; i < mask.size(); i++)
+      {
+        std::string label = fmt::format("Show region {:d}", i);
+        ImGui::Checkbox(label.c_str(), &mask(i));
+      }
+      if (ImGui::Button("Refresh", ImVec2(-1,0)))
+      {
+        show_tet();
+      }
     }
 
     // Export
@@ -303,8 +335,7 @@ int main(int argc, char* argv[])
     {
       // Export options
       ImGui::Checkbox("remove unrefed", &remove_unrefed);
-      ImGui::Checkbox("export surf", &export_surf);
-      ImGui::Checkbox("export tet", &export_tet);
+      ImGui::Checkbox("export tet info", &export_tet_info);
       // TODO file dialog
       static std::string output_file = "test.vtx";
       ImGui::InputText("output file", output_file);
