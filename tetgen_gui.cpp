@@ -10,7 +10,7 @@
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <imgui/imgui.h>
 #include <tetgen/tetgen.h>
-#include <fmt/os.h>
+#include <fmt/ostream.h>
 
 igl::opengl::glfw::Viewer viewer;
 
@@ -33,6 +33,7 @@ iVec TX_tet;
 
 // visualize representation
 bVec mask;
+bVec mask_prev;
 iMat T_vis;
 iMat TX_vis;
 iMat F_vis;
@@ -224,27 +225,27 @@ bool export_file(const std::string filename)
   }
 
   printf("Writing as VFTX format\n");
-  auto out = fmt::output_file(filename);
+  auto out = std::ofstream(filename, std::ofstream::out | std::ofstream::trunc);
   
-  out.print("# writing with .vftx format\n");
+  fmt::print(out, "# writing with .vftx format\n");
 
   // tetrahedron information number, which is its cluster info
   if (export_tet_info)
-    out.print("txn 1\n");     
+    fmt::print(out, "txn 1\n");
 
   for (int i = 0; i < V_exp.rows(); i++)
-    out.print("v {:f} {:f} {:f}\n", V_exp(i, 0), V_exp(i, 1), V_exp(i, 2));
+    fmt::print(out, "v {:f} {:f} {:f}\n", V_exp(i, 0), V_exp(i, 1), V_exp(i, 2));
 
   if (export_tet_info)
   {
     for (int i = 0; i < T_exp.rows(); i++)
-      out.print("t {:d} {:d} {:d} {:d} {:d}\n", 
+      fmt::print(out, "t {:d} {:d} {:d} {:d} {:d}\n",
           T_exp(i, 0), T_exp(i, 1), T_exp(i, 2), T_exp(i, 3), TX_exp(i));
   }
   else
   {
     for (int i = 0; i < T_exp.rows(); i++)
-      out.print("t {:d} {:d} {:d} {:d}\n", 
+      fmt::print(out, "t {:d} {:d} {:d} {:d}\n",
           T_exp(i, 0), T_exp(i, 1), T_exp(i, 2), T_exp(i, 3));
   }
 	
@@ -309,7 +310,8 @@ int main(int argc, char* argv[])
         
         igl::boundary_facets(T_tet, F_tet);
 
-        mask = bVec::Ones(TX_tet.maxCoeff()+1);
+        mask = bVec::Ones(TX_tet.maxCoeff() + 1);
+        mask_prev = mask;
 
         printf("Tetrahedralize finished.\n");
         show_tet();
@@ -324,9 +326,13 @@ int main(int argc, char* argv[])
         std::string label = fmt::format("Show region {:d}", i);
         ImGui::Checkbox(label.c_str(), &mask(i));
       }
-      if (ImGui::Button("Refresh", ImVec2(-1,0)))
+      for (int i = 0; i < mask.size(); i++)
       {
-        show_tet();
+        if (mask(i) != mask_prev(i))
+        {
+          mask_prev(i) = mask(i);
+          show_tet();
+        }
       }
     }
 
