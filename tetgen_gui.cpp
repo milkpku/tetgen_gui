@@ -26,6 +26,7 @@ iMat F_ori;
 tetgenio tetio;
 
 // output representation
+int t_offset = 0; // when input is stl, t_offset should be 1
 dMat V_tet;
 iMat T_tet;
 iMat F_tet;
@@ -78,18 +79,21 @@ bool load_tetgenio(const std::string filename)
     igl_info = igl::readOBJ(filename, V_ori, F_ori);
     if (igl_info)
       tetgenio_info = igl::copyleft::tetgen::mesh_to_tetgenio(V_ori, F_ori, tetio);
+    t_offset = 0;
   }
 
   if (ends_with(filename, ".off"))
   {
     igl_info = igl::readOFF(filename, V_ori, F_ori);
     tetgenio_info = tetio.load_off(f_tmp);
+    t_offset = 0;
   }
 
   if (ends_with(filename, ".ply"))
   {
     igl_info = igl::readPLY(filename, V_ori, F_ori);
     tetgenio_info = tetio.load_ply(f_tmp);
+    t_offset = 0;
   }
     
   if (ends_with(filename, ".stl"))
@@ -97,6 +101,7 @@ bool load_tetgenio(const std::string filename)
     dMat N;
     igl_info = igl::readSTL(filename, V_ori, F_ori, N);
     tetgenio_info = tetio.load_stl(f_tmp);
+    t_offset = 1;
   }
 
   delete[] f_tmp;
@@ -171,6 +176,8 @@ int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T
     T(i, 2) = out.tetrahedronlist[i*4+2];
     T(i, 3) = out.tetrahedronlist[i*4+3];
   }
+
+  T.array() -= t_offset;
   assert(T.maxCoeff() >= 0);
   assert(T.minCoeff() >= 0);
   assert(T.maxCoeff() < V.rows());
