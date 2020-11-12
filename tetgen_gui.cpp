@@ -177,7 +177,7 @@ int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T
     T(i, 3) = out.tetrahedronlist[i*4+3];
   }
 
-  T.array() -= t_offset;
+  T.array() -= min(t_offset, T.minCoeff());
   assert(T.maxCoeff() >= 0);
   assert(T.minCoeff() >= 0);
   assert(T.maxCoeff() < V.rows());
@@ -262,6 +262,12 @@ bool export_file(const std::string filename)
 
 int main(int argc, char* argv[])
 {
+  std::string input_file;
+  if (argc == 2)
+    input_file = std::string(argv[1]);
+  else
+    input_file = "cylinder.ply";
+
   igl::opengl::glfw::imgui::ImGuiMenu menu;
   viewer.plugins.push_back(&menu);
 
@@ -281,11 +287,10 @@ int main(int argc, char* argv[])
     if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // TODO file dialog
-      static std::string mesh_file = "cylinder.ply";
-      ImGui::InputText("input file", mesh_file);
+      ImGui::InputText("input file", input_file);
       if (ImGui::Button("Open", ImVec2(-1,0)))
       {
-        load_tetgenio(mesh_file);
+        load_tetgenio(input_file);
         // TODO error handle
       }
     }
