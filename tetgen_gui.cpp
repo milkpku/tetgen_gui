@@ -43,6 +43,7 @@ void show_origin()
 {
   viewer.data().clear();
   viewer.data().set_mesh(V_ori, F_ori);
+  viewer.core().align_camera_center(V_ori);
 }
 
 void show_tet()
@@ -208,6 +209,16 @@ int tetrahedralize_tetgenio(tetgenio* in, std::string switches, dMat& V, iMat& T
   return 0;
 }
 
+bool show_mesh_vertex(int vid)
+{
+  dMat v = V_ori.row(vid - 1);
+  dMat c(1, 3);
+  c << 1, 0, 0;
+  viewer.data().clear_points();
+  viewer.data().add_points(v, c);
+  return true;
+}
+
 bool remove_unrefed = true;
 bool export_tet_info = true;
 bool export_file(const std::string filename)
@@ -218,7 +229,7 @@ bool export_file(const std::string filename)
 	
   if (remove_unrefed)
   {
-    printf("Writing as OBJ format\n");
+    printf("Remove unreferenced vertices.\n");
     if (remove_unrefed)
     {
       iMat I, J;
@@ -231,7 +242,7 @@ bool export_file(const std::string filename)
     V_exp = V_tet;
   }
 
-  printf("Writing as VFTX format\n");
+  printf("Writing as VFTX format.\n");
   auto out = std::ofstream(filename, std::ofstream::out | std::ofstream::trunc);
   
   fmt::print(out, "# writing with .vftx format\n");
@@ -329,6 +340,20 @@ int main(int argc, char* argv[])
         show_tet();
        }
     }
+
+    // Debug
+    if (ImGui::CollapsingHeader("Debug", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+      static int vid = 1;
+      ImGui::InputInt("vertex", &vid);
+      if (ImGui::Button("Show Vertex", ImVec2(-1, 0)))
+      {
+        if (show_mesh_vertex(vid))
+        {
+          printf("Show vertex %d\n", vid);
+        }
+      }
+    }
     
     // Visualize
     if (ImGui::CollapsingHeader("Show Region", ImGuiTreeNodeFlags_DefaultOpen))
@@ -349,7 +374,7 @@ int main(int argc, char* argv[])
     }
 
     // Export
-    if (ImGui::CollapsingHeader("Load", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // Export options
       ImGui::Checkbox("remove unrefed", &remove_unrefed);
