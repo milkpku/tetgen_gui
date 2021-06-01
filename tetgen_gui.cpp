@@ -377,8 +377,8 @@ int main(int argc, char* argv[])
     if (ImGui::CollapsingHeader("Output", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // Export options
-      ImGui::Checkbox("remove unrefed", &remove_unrefed);
-      ImGui::Checkbox("export tet info", &export_tet_info);
+      ImGui::Checkbox("remove unreferred", &remove_unrefed);
+      ImGui::Checkbox("export region info", &export_tet_info);
       // TODO file dialog
       static std::string output_file = "test.vtx";
       ImGui::InputText("output file", output_file);
