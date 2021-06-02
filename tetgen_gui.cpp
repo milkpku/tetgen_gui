@@ -242,10 +242,10 @@ bool export_file(const std::string filename)
     V_exp = V_tet;
   }
 
-  printf("Writing as VFTX format.\n");
+  printf("Writing as VTX format.\n");
   auto out = std::ofstream(filename, std::ofstream::out | std::ofstream::trunc);
   
-  fmt::print(out, "# writing with .vftx format\n");
+  fmt::print(out, "# writing with .vtx format\n");
 
   // tetrahedron information number, which is its cluster info
   if (export_tet_info)
